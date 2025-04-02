@@ -16,10 +16,23 @@ A Python script that automatically searches for phone numbers with a specific nu
 - Google Chrome browser
 - pip (Python package installer)
 
+## Important Note
+⚠️ **Before Running the Script**:
+1. Close ALL Chrome browser windows and processes if unable to detect 
+2. If you can't close Chrome, open Task Manager and:
+   - Look for any "Google Chrome" processes
+   - End all Chrome-related tasks
+   - This ensures a clean start for the debugging session
+
 ## Installation
 
-1. Clone this repository or download the files
-2. Install the required packages:
+1. Clone this repository:
+```bash
+git clone <repository-url>
+cd <repository-directory>
+```
+
+2. Install required packages:
 ```bash
 pip install -r requirements.txt
 playwright install

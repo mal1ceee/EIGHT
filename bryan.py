@@ -288,6 +288,9 @@ if __name__ == "__main__":
         page = None
         found_numbers = []
         current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
+        required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
+        
+        print(f"\nSearching for numbers with exactly {required_digits} distinct digits...")
         
         while True:
             # First search with current max_attempts

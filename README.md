@@ -9,6 +9,7 @@ A Python script that automatically searches for phone numbers with a specific nu
 - Automatically clicks "Show more numbers" to load additional options
 - Configurable settings through environment variables
 - Detailed logging of the search process
+- Interactive search with user prompts to continue searching
 
 ## Prerequisites
 
@@ -86,20 +87,78 @@ python bryan.py
    - Press Enter when ready to start the search
 
 3. The script will:
+   - Show how many distinct digits it's searching for
    - Search through available numbers
    - Click "Show more numbers" if needed
    - Stop when it finds a number with the required number of distinct digits
-   - Display the found number
+   - Ask if you want to continue searching
+   - Ask how many more numbers to search for if you want to continue
 
-## Example
+4. When prompted to continue:
+   - Type 'y' and press Enter to continue searching
+   - Type 'n' and press Enter to stop searching and see all found numbers
 
-If you want to find a number with exactly 4 distinct digits:
+5. When asked how many more numbers to search for:
+   - Enter a number (e.g., 5) to search for that many additional numbers
+   - Press Enter without typing a number to use the default value (1)
+   - The script will search for the specified number of additional numbers
+
+## Interactive Search Example
+
+Here's an example of how the interactive search works:
+
+```
+Searching for numbers with exactly 3 distinct digits...
+
+Found a suitable number: 112233
+Total numbers found so far: [112233]
+
+Do you want to continue searching? (y/n)
+y
+
+How many more numbers would you like to search for?
+3
+
+Found a suitable number: 122333
+Found a suitable number: 111223
+No more suitable numbers found in this batch.
+
+All found numbers: [112233, 122333, 111223]
+```
+
+## Examples
+
+### Example 1: Finding numbers with exactly 3 distinct digits
+If you want to find a number with exactly 3 distinct digits (e.g., 112233, 122333, 111223):
+1. Edit the `.env` file:
+```env
+REQUIRED_DISTINCT_DIGITS=3
+```
+
+2. Run the script as described above
+
+### Example 2: Finding numbers with exactly 4 distinct digits
+If you want to find a number with exactly 4 distinct digits (e.g., 11223344, 12334455):
 1. Edit the `.env` file:
 ```env
 REQUIRED_DISTINCT_DIGITS=4
 ```
 
 2. Run the script as described above
+
+## How the Search Works
+
+The script looks for numbers that have exactly the specified number of distinct digits. For example:
+
+- With `REQUIRED_DISTINCT_DIGITS=3`:
+  - 112233 would be suitable (has exactly 3 distinct digits: 1,2,3)
+  - 123456 would not be suitable (has 6 distinct digits)
+  - 111111 would not be suitable (has only 1 distinct digit)
+
+- With `REQUIRED_DISTINCT_DIGITS=4`:
+  - 11223344 would be suitable (has exactly 4 distinct digits: 1,2,3,4)
+  - 123456 would not be suitable (has 6 distinct digits)
+  - 111222 would not be suitable (has only 2 distinct digits)
 
 ## Troubleshooting
 

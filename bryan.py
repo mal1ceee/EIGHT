@@ -133,66 +133,65 @@ def has_exactly_three_distinct_digits(number):
     required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
     return unique_digits == required_digits
 
-def find_number_with_three_distinct_digits():
+def find_number_with_three_distinct_digits(browser=None, page=None):
+    """Find a number with exactly three distinct digits. If browser and page are provided, use them instead of creating new ones."""
     with sync_playwright() as p:
         try:
-            print("Connecting to Chrome...")
-            # Try to connect multiple times if needed
-            max_connect_attempts = 3
-            browser = None
-            
-            for attempt in range(max_connect_attempts):
-                try:
-                    browser = p.chromium.connect_over_cdp(f"http://localhost:{os.getenv('CHROME_DEBUG_PORT', 9222)}")
-                    print("Connected to Chrome successfully!")
-                    break
-                except Exception as e:
-                    if attempt < max_connect_attempts - 1:
-                        print(f"Connection attempt {attempt + 1} failed: {e}")
-                        print("Retrying in 2 seconds...")
-                        time.sleep(2)
-                    else:
-                        print("Failed to connect to Chrome after multiple attempts")
-                        print("\nTroubleshooting steps:")
-                        print("1. Make sure Chrome is running with remote debugging enabled")
-                        print("2. Check if the debugging port is correct")
-                        print("3. Try closing and reopening Chrome")
-                        print("4. Run the script again")
-                        return None
-            
             if not browser:
-                return None
-            
-            # Get all pages and find the one with the Eight URL
-            print("Looking for the Eight number selection page...")
-            contexts = browser.contexts
-            target_url = os.getenv('TARGET_URL', 'https://account.eight.com.sg/activation/choose-number')
-            found_page = None
-            
-            for context in contexts:
-                for page in context.pages:
-                    if target_url in page.url:
-                        found_page = page
-                        break
-                if found_page:
-                    break
-            
-            if not found_page:
-                print(f"Could not find page with URL containing '{target_url}'")
-                print("Please make sure you're on the Eight number selection page")
-                browser.close()
-                return None
+                print("Connecting to Chrome...")
+                # Try to connect multiple times if needed
+                max_connect_attempts = 3
+                browser = None
                 
-            page = found_page
-            print(f"Found the correct page: {page.url}")
+                for attempt in range(max_connect_attempts):
+                    try:
+                        browser = p.chromium.connect_over_cdp(f"http://localhost:{os.getenv('CHROME_DEBUG_PORT', 9222)}")
+                        print("Connected to Chrome successfully!")
+                        break
+                    except Exception as e:
+                        if attempt < max_connect_attempts - 1:
+                            print(f"Connection attempt {attempt + 1} failed: {e}")
+                            print("Retrying in 2 seconds...")
+                            time.sleep(2)
+                        else:
+                            print("Failed to connect to Chrome after multiple attempts")
+                            print("\nTroubleshooting steps:")
+                            print("1. Make sure Chrome is running with remote debugging enabled")
+                            print("2. Check if the debugging port is correct")
+                            print("3. Try closing and reopening Chrome")
+                            print("4. Run the script again")
+                            return None, None
             
-            # Wait for page to be fully loaded with better error handling
-            print("Waiting for page to be fully loaded...")
-            try:
-                page.wait_for_load_state("networkidle", timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
-            except Exception as e:
-                print(f"Warning: Page load timeout: {e}")
-                print("Continuing anyway...")
+            if not page:
+                # Get all pages and find the one with the Eight URL
+                print("Looking for the Eight number selection page...")
+                contexts = browser.contexts
+                target_url = os.getenv('TARGET_URL', 'https://account.eight.com.sg/activation/choose-number')
+                found_page = None
+                
+                for context in contexts:
+                    for p in context.pages:
+                        if target_url in p.url:
+                            found_page = p
+                            break
+                    if found_page:
+                        break
+                
+                if not found_page:
+                    print(f"Could not find page with URL containing '{target_url}'")
+                    print("Please make sure you're on the Eight number selection page")
+                    return None, None
+                    
+                page = found_page
+                print(f"Found the correct page: {page.url}")
+                
+                # Wait for page to be fully loaded with better error handling
+                print("Waiting for page to be fully loaded...")
+                try:
+                    page.wait_for_load_state("networkidle", timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
+                except Exception as e:
+                    print(f"Warning: Page load timeout: {e}")
+                    print("Continuing anyway...")
             
             attempts = 0
             # Read MAX_SEARCH_ATTEMPTS from .env with proper error handling
@@ -249,8 +248,7 @@ def find_number_with_three_distinct_digits():
                             if has_exactly_three_distinct_digits(number):
                                 print(f"\nFound number with exactly {required_digits} distinct digits: {number}")
                                 print("Success! Found a suitable number.")
-                                browser.close()
-                                return number
+                                return number, (browser, page)
                     except Exception as e:
                         print(f"Error processing button: {e}")
                         continue
@@ -270,28 +268,44 @@ def find_number_with_three_distinct_digits():
                         page.wait_for_selector('div[orientation="horizontal"] button', timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
                     else:
                         print("No more numbers available")
-                        browser.close()
-                        return None
+                        return None, (browser, page)
                 except Exception as e:
                     print(f"Error clicking show more button: {e}")
-                    browser.close()
-                    return None
+                    return None, (browser, page)
             
             print(f"\nReached maximum attempts ({max_attempts}) without finding a suitable number")
-            browser.close()
-            return None
+            return None, (browser, page)
         except Exception as e:
             print(f"Error connecting to browser: {e}")
-            return None
+            return None, (None, None)
 
 if __name__ == "__main__":
     # First, launch Chrome with remote debugging
     if launch_chrome_with_debugging():
         # Then run the main script
-        result = find_number_with_three_distinct_digits()
-        if result:
-            print(f"Successfully found number with {os.getenv('REQUIRED_DISTINCT_DIGITS', 3)} distinct digits: {result}")
+        browser = None
+        page = None
+        found_numbers = []
+        
+        while True:
+            result, (browser, page) = find_number_with_three_distinct_digits(browser, page)
+            if result:
+                found_numbers.append(result)
+                print(f"\nFound numbers so far: {found_numbers}")
+                print("\nDo you want to continue searching? (y/n)")
+                if input().lower() != 'y':
+                    break
+            else:
+                print("\nNo more numbers found. Do you want to try again? (y/n)")
+                if input().lower() != 'y':
+                    break
+                # Reset browser and page for new search
+                browser = None
+                page = None
+        
+        if found_numbers:
+            print(f"\nAll found numbers: {found_numbers}")
         else:
-            print(f"No number with exactly {os.getenv('REQUIRED_DISTINCT_DIGITS', 3)} distinct digits found")
+            print(f"No numbers with exactly {os.getenv('REQUIRED_DISTINCT_DIGITS', 3)} distinct digits found")
     else:
         print("Failed to launch Chrome with remote debugging. Please follow the manual instructions.")

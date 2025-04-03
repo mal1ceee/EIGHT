@@ -20,7 +20,33 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual Environment
 .venv/
+venv/
+ENV/
+
+# Chrome Debug
+.chrome_debug/
+chrome-debug-profile/
+chrome_debug_profile/
+**/Default/Cache/
+**/Default/Code Cache/
+**/Default/Session Storage/
+**/Default/Local Storage/
+**/Default/Extension State/
+**/Default/Service Worker/
+**/Default/Site Characteristics Database/
+**/Default/Sync Data/
+**/Default/shared_proto_db/
+**/Default/Extension Rules/
+**/Default/Extension Scripts/
+**/Default/Local Extension Settings/
+chrome_debug.log
+debug.log
+*.log.old
+
+# Search State
+search_state.json
 
 # IDE
 .idea/
@@ -34,10 +60,6 @@ wheels/
 *.tmp
 *.bak
 *.backup
-
-# Chrome debug logs
-chrome_debug.log
-debug.log
 
 # Playwright
 node_modules/

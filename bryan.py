@@ -128,213 +128,204 @@ def launch_chrome_with_debugging():
         return False
 
 def has_exactly_three_distinct_digits(number):
-    # Convert number to string and count unique digits
-    unique_digits = len(set(str(number)))
+    # Optimized version using set comprehension
+    unique_digits = len({d for d in str(number)})
     required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
     return unique_digits == required_digits
 
-def find_number_with_three_distinct_digits(browser=None, page=None, max_attempts=None):
+def get_speed_settings():
+    """Get speed-related settings from environment variables"""
+    try:
+        search_speed = float(os.getenv('SEARCH_SPEED', '1.0'))
+        min_wait = float(os.getenv('MIN_WAIT_TIME', '0.5'))
+        max_wait = float(os.getenv('MAX_WAIT_TIME', '3.0'))
+        
+        # Ensure values are within reasonable limits
+        search_speed = max(0.1, min(10.0, search_speed))
+        min_wait = max(0.1, min(5.0, min_wait))
+        max_wait = max(min_wait, min(10.0, max_wait))
+        
+        return {
+            'speed': search_speed,
+            'min_wait': min_wait,
+            'max_wait': max_wait
+        }
+    except ValueError:
+        return {
+            'speed': 1.0,
+            'min_wait': 0.5,
+            'max_wait': 3.0
+        }
+
+def get_adjusted_wait_time(base_time):
+    """Adjust wait time based on speed settings"""
+    settings = get_speed_settings()
+    adjusted_time = base_time / settings['speed']
+    return max(settings['min_wait'], min(settings['max_wait'], adjusted_time))
+
+def find_number_with_three_distinct_digits(playwright, browser=None, page=None, max_attempts=None, found_numbers=None):
     """Find a number with exactly three distinct digits. If browser and page are provided, use them instead of creating new ones."""
-    with sync_playwright() as p:
-        try:
-            if not browser:
-                print("Connecting to Chrome...")
-                # Try to connect multiple times if needed
-                max_connect_attempts = 3
-                browser = None
-                
-                for attempt in range(max_connect_attempts):
-                    try:
-                        browser = p.chromium.connect_over_cdp(f"http://localhost:{os.getenv('CHROME_DEBUG_PORT', 9222)}")
-                        print("Connected to Chrome successfully!")
+    if found_numbers is None:
+        found_numbers = set()
+        
+    try:
+        if not browser:
+            print("Connecting to Chrome...")
+            browser = playwright.chromium.connect_over_cdp(f"http://localhost:{os.getenv('CHROME_DEBUG_PORT', 9222)}")
+            print("Connected to Chrome successfully!")
+        
+        if not page:
+            # Get all pages and find the one with the Eight URL
+            contexts = browser.contexts
+            target_url = os.getenv('TARGET_URL', 'https://account.eight.com.sg/activation/choose-number')
+            found_page = None
+            
+            for context in contexts:
+                for p in context.pages:
+                    if target_url in p.url:
+                        found_page = p
                         break
-                    except Exception as e:
-                        if attempt < max_connect_attempts - 1:
-                            print(f"Connection attempt {attempt + 1} failed: {e}")
-                            print("Retrying in 2 seconds...")
-                            time.sleep(2)
-                        else:
-                            print("Failed to connect to Chrome after multiple attempts")
-                            print("\nTroubleshooting steps:")
-                            print("1. Make sure Chrome is running with remote debugging enabled")
-                            print("2. Check if the debugging port is correct")
-                            print("3. Try closing and reopening Chrome")
-                            print("4. Run the script again")
-                            return None, None
+                if found_page:
+                    break
             
-            if not page:
-                # Get all pages and find the one with the Eight URL
-                print("Looking for the Eight number selection page...")
-                contexts = browser.contexts
-                target_url = os.getenv('TARGET_URL', 'https://account.eight.com.sg/activation/choose-number')
-                found_page = None
+            if not found_page:
+                print("Please make sure you're on the Eight number selection page")
+                return None, (browser, page)
                 
-                for context in contexts:
-                    for p in context.pages:
-                        if target_url in p.url:
-                            found_page = p
-                            break
-                    if found_page:
-                        break
-                
-                if not found_page:
-                    print(f"Could not find page with URL containing '{target_url}'")
-                    print("Please make sure you're on the Eight number selection page")
-                    return None, None
-                    
-                page = found_page
-                print(f"Found the correct page: {page.url}")
-                
-                # Wait for page to be fully loaded with better error handling
-                print("Waiting for page to be fully loaded...")
-                try:
-                    page.wait_for_load_state("networkidle", timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
-                except Exception as e:
-                    print(f"Warning: Page load timeout: {e}")
-                    print("Continuing anyway...")
+            page = found_page
+        
+        attempts = 0
+        if max_attempts is None:
+            max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
+        
+        required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
+        
+        # Cache selectors for faster access
+        button_container_selector = 'div[orientation="horizontal"]'
+        button_selector = f'{button_container_selector} button'
+        show_more_selector = 'span:has-text("Show more numbers")'
+        
+        # Get speed-adjusted timeouts
+        base_timeout = int(os.getenv('PAGE_TIMEOUT', 15000))
+        base_load_wait = int(os.getenv('LOAD_WAIT_TIME', 1))
+        
+        timeout = int(get_adjusted_wait_time(base_timeout) * 1000)  # Convert to milliseconds
+        load_wait = get_adjusted_wait_time(base_load_wait)
+        
+        while attempts < max_attempts:
+            attempts += 1
             
-            attempts = 0
-            # Use provided max_attempts or read from .env with proper error handling
-            if max_attempts is None:
-                try:
-                    max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
-                    print(f"Maximum search attempts set to: {max_attempts}")
-                except ValueError:
-                    print("Warning: Invalid MAX_SEARCH_ATTEMPTS value in .env file. Using default value of 1.")
-                    max_attempts = 1
-            
-            required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
-            
-            while attempts < max_attempts:
-                attempts += 1
-                print(f"\nAttempt {attempts}/{max_attempts}: Checking current numbers...")
-                
-                # Wait for the buttons to be visible with increased timeout
-                print("Waiting for number buttons to appear...")
-                try:
-                    # First check if the container exists
-                    container = page.wait_for_selector('div[orientation="horizontal"]', timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
-                    if not container:
-                        print("Could not find the button container!")
-                        continue
-                        
-                    # Then wait for buttons
-                    buttons = page.wait_for_selector('div[orientation="horizontal"] button', timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
-                    if not buttons:
-                        print("Could not find any number buttons!")
-                        continue
-                        
-                    print("Found the button container and buttons!")
-                except Exception as e:
-                    print(f"Error waiting for buttons: {e}")
-                    print("Current page content:")
-                    print(page.content())
+            try:
+                # Wait for buttons with adjusted timeout
+                container = page.wait_for_selector(button_container_selector, timeout=timeout)
+                if not container:
                     continue
                 
-                # Get all buttons containing numbers
-                buttons = page.query_selector_all('div[orientation="horizontal"] button')
-                print(f"Found {len(buttons)} number buttons")
+                # Get all buttons at once and process them
+                buttons = page.query_selector_all(button_selector)
                 
-                # Check each button for numbers with exactly the required number of distinct digits
+                # Process all visible numbers at once
+                numbers = []
                 for button in buttons:
                     try:
-                        # Get the number from the markdown div inside the button
                         markdown_div = button.query_selector('div.markdown')
                         if markdown_div:
-                            number_text = markdown_div.inner_text()
-                            number = int(number_text)
-                            print(f"\nChecking number: {number}")
-                            
-                            # Check if the number has exactly the required number of distinct digits
-                            if has_exactly_three_distinct_digits(number):
-                                print(f"\nFound number with exactly {required_digits} distinct digits: {number}")
-                                print("Success! Found a suitable number.")
-                                return number, (browser, page)
-                    except Exception as e:
-                        print(f"Error processing button: {e}")
+                            number = int(markdown_div.inner_text())
+                            if number not in found_numbers:  # Only add numbers we haven't seen before
+                                numbers.append(number)
+                    except:
                         continue
                 
-                # If no number with required distinct digits found, click "Show more numbers"
-                try:
-                    print("\nLooking for 'Show more numbers' button...")
-                    show_more_button = page.query_selector('span:has-text("Show more numbers")')
-                    if show_more_button:
-                        print("No suitable number found. Clicking 'Show more numbers'...")
-                        show_more_button.click()
-                        print("Clicked 'Show more numbers'")
-                        # Wait for new numbers to load
-                        print("Waiting for new numbers to load...")
-                        time.sleep(int(os.getenv('LOAD_WAIT_TIME', 3)))  # Increased wait time
-                        # Wait for the old numbers to disappear and new ones to appear
-                        page.wait_for_selector('div[orientation="horizontal"] button', timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
-                    else:
-                        print("No more numbers available")
-                        return None, (browser, page)
-                except Exception as e:
-                    print(f"Error clicking show more button: {e}")
+                # Check all numbers in one batch
+                for number in numbers:
+                    if has_exactly_three_distinct_digits(number) and number not in found_numbers:
+                        print(f"\nFound new number with exactly {required_digits} distinct digits: {number}")
+                        found_numbers.add(number)  # Add to our set of found numbers
+                        return number, (browser, page)
+                
+                # Click "Show more numbers" if available
+                show_more_button = page.query_selector(show_more_selector)
+                if show_more_button:
+                    show_more_button.click()
+                    # Use adjusted wait time
+                    time.sleep(load_wait)
+                else:
+                    print("\nNo more numbers available to check")
                     return None, (browser, page)
-            
-            print(f"\nReached maximum attempts ({max_attempts}) without finding a suitable number")
-            return None, (browser, page)
-        except Exception as e:
-            print(f"Error connecting to browser: {e}")
-            return None, (None, None)
+                    
+            except Exception as e:
+                print(f"Error during search: {e}")
+                continue
+        
+        return None, (browser, page)
+        
+    except Exception as e:
+        print(f"Error connecting to browser: {e}")
+        return None, (None, None)
 
 if __name__ == "__main__":
     # First, launch Chrome with remote debugging
     if launch_chrome_with_debugging():
         # Then run the main script
-        browser = None
-        page = None
-        found_numbers = []
+        found_numbers = set()  # Use a set to track unique numbers
         current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
         required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
         
         print(f"\nSearching for numbers with exactly {required_digits} distinct digits...")
         
-        while True:
-            # First search with current max_attempts
-            result, (browser, page) = find_number_with_three_distinct_digits(browser, page, current_max_attempts)
-            if result:
-                found_numbers.append(result)
-                print(f"\nFound numbers so far: {found_numbers}")
+        # Create a single Playwright instance for the entire session
+        with sync_playwright() as playwright:
+            browser = None
+            page = None
             
-            # Ask if user wants to continue searching
-            print("\nDo you want to continue searching? (y/n)")
-            if input().lower() != 'y':
-                break
-                
-            # Ask how many more numbers to search for
-            print("\nHow many more numbers would you like to search for? (Enter a number or press Enter for default)")
-            try:
-                additional_searches = input().strip()
-                if additional_searches:
-                    current_max_attempts = int(additional_searches)
-                    print(f"Will search for {current_max_attempts} more numbers")
-                else:
-                    current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
-                    print(f"Using default of {current_max_attempts} more searches")
-            except ValueError:
-                print("Invalid input. Using default number of searches.")
-                current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
-            
-            # Keep searching until we find the requested number of numbers or run out of attempts
-            remaining_searches = current_max_attempts
-            while remaining_searches > 0:
-                result, (browser, page) = find_number_with_three_distinct_digits(browser, page, remaining_searches)
+            while True:
+                # First search with current max_attempts
+                result, (browser, page) = find_number_with_three_distinct_digits(playwright, browser, page, current_max_attempts, found_numbers)
                 if result:
-                    found_numbers.append(result)
-                    print(f"\nFound numbers so far: {found_numbers}")
-                    remaining_searches -= 1
-                else:
-                    print("\nNo more numbers found in this batch.")
+                    print(f"\nFound numbers so far: {sorted(list(found_numbers))}")
+                
+                # Ask if user wants to continue searching
+                print("\nDo you want to continue searching? (y/n)")
+                if input().lower() != 'y':
                     break
                     
-            print(f"\nCompleted searching for {current_max_attempts} more numbers.")
-            print(f"Total numbers found: {len(found_numbers)}")
+                # Ask how many more numbers to search for
+                print("\nHow many more numbers would you like to search for? (Enter a number or press Enter for default)")
+                try:
+                    additional_searches = input().strip()
+                    if additional_searches:
+                        current_max_attempts = int(additional_searches)
+                        print(f"Will search for {current_max_attempts} more numbers")
+                    else:
+                        current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
+                        print(f"Using default of {current_max_attempts} more searches")
+                except ValueError:
+                    print("Invalid input. Using default number of searches.")
+                    current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
+                
+                # Keep searching until we find the requested number of numbers or run out of attempts
+                remaining_searches = current_max_attempts
+                while remaining_searches > 0:
+                    result, (browser, page) = find_number_with_three_distinct_digits(playwright, browser, page, remaining_searches, found_numbers)
+                    if result:
+                        print(f"\nFound numbers so far: {sorted(list(found_numbers))}")
+                        remaining_searches -= 1
+                    else:
+                        print("\nNo more numbers found in this batch.")
+                        break
+                        
+                print(f"\nCompleted searching for {current_max_attempts} more numbers.")
+                print(f"Total unique numbers found: {len(found_numbers)}")
+            
+            # Close the browser connection
+            if browser:
+                try:
+                    browser.close()
+                except:
+                    pass
         
         if found_numbers:
-            print(f"\nAll found numbers: {found_numbers}")
+            print(f"\nAll found numbers: {sorted(list(found_numbers))}")
         else:
             print(f"No numbers with exactly {os.getenv('REQUIRED_DISTINCT_DIGITS', 3)} distinct digits found")
     else:

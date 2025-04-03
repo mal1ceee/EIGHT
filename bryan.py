@@ -72,7 +72,7 @@ def launch_chrome_with_debugging():
         if os.path.exists(user_data_dir):
             shutil.rmtree(user_data_dir)
         
-        # Launch Chrome with more options for stability
+        # Launch Chrome with more options for stability and open eight.com.sg
         subprocess.Popen([
             chrome_path,
             f"--remote-debugging-port={os.getenv('CHROME_DEBUG_PORT', 9222)}",
@@ -97,10 +97,11 @@ def launch_chrome_with_debugging():
             "--disable-translate",
             "--metrics-recording-only",
             "--no-sandbox",
-            "--safebrowsing-disable-auto-update"
+            "--safebrowsing-disable-auto-update",
+            "https://www.eight.com.sg/"  # Add the URL to open
         ])
         
-        print("Chrome launched with remote debugging enabled.")
+        print("Chrome launched with remote debugging enabled and navigating to eight.com.sg")
         print("\nPlease complete the following steps:")
         print(f"1. Navigate to {os.getenv('TARGET_URL', 'https://account.eight.com.sg/activation/choose-number')}")
         print("2. Complete any human verification if needed")

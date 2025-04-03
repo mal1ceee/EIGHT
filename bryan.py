@@ -4,9 +4,22 @@ import os
 import subprocess
 import requests
 from dotenv import load_dotenv
+import psutil
+import shutil
 
 # Load environment variables
 load_dotenv()
+
+def kill_chrome_processes():
+    """Kill all existing Chrome processes"""
+    try:
+        if os.name == 'nt':  # Windows
+            subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'], capture_output=True)
+        else:  # Linux/Mac
+            subprocess.run(['pkill', 'chrome'], capture_output=True)
+        time.sleep(2)  # Wait for processes to close
+    except Exception as e:
+        print(f"Warning: Could not kill Chrome processes: {e}")
 
 def wait_for_chrome_debugger():
     print("Waiting for Chrome debugger to be ready...")
@@ -41,6 +54,9 @@ def find_chrome_path():
     return None
 
 def launch_chrome_with_debugging():
+    # Kill existing Chrome processes
+    kill_chrome_processes()
+    
     # Find Chrome installation path
     chrome_path = find_chrome_path()
     if not chrome_path:
@@ -51,24 +67,64 @@ def launch_chrome_with_debugging():
         return False
     
     try:
-        # Launch Chrome with remote debugging
-        subprocess.Popen([chrome_path, f"--remote-debugging-port={os.getenv('CHROME_DEBUG_PORT', 9222)}"])
+        # Create unique user data directory
+        user_data_dir = os.path.join(os.getcwd(), "chrome-debug-profile")
+        if os.path.exists(user_data_dir):
+            shutil.rmtree(user_data_dir)
+        
+        # Launch Chrome with more options for stability
+        subprocess.Popen([
+            chrome_path,
+            f"--remote-debugging-port={os.getenv('CHROME_DEBUG_PORT', 9222)}",
+            f"--user-data-dir={user_data_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-breakpad",
+            "--disable-client-side-phishing-detection",
+            "--disable-default-apps",
+            "--disable-dev-shm-usage",
+            "--disable-extensions",
+            "--disable-features=site-per-process",
+            "--disable-hang-monitor",
+            "--disable-ipc-flooding-protection",
+            "--disable-popup-blocking",
+            "--disable-prompt-on-repost",
+            "--disable-renderer-backgrounding",
+            "--disable-sync",
+            "--disable-translate",
+            "--metrics-recording-only",
+            "--no-sandbox",
+            "--safebrowsing-disable-auto-update"
+        ])
+        
         print("Chrome launched with remote debugging enabled.")
-        print("Please complete the following steps:")
+        print("\nPlease complete the following steps:")
         print(f"1. Navigate to {os.getenv('TARGET_URL', 'https://account.eight.com.sg/activation/choose-number')}")
         print("2. Complete any human verification if needed")
         print("3. Get to the page with the numbers")
         print("4. Press Enter when ready to start the script")
         input()
         
-        # Wait for Chrome debugger to be ready
+        # Wait for Chrome debugger with better error handling
         if not wait_for_chrome_debugger():
-            print("Failed to connect to Chrome debugger. Please make sure Chrome is running with remote debugging enabled.")
+            print("\nTroubleshooting steps:")
+            print("1. Close all Chrome windows manually")
+            print("2. Check Task Manager and end all Chrome processes")
+            print("3. Delete the chrome-debug-profile folder")
+            print("4. Try running the script again")
             return False
             
         return True
     except Exception as e:
         print(f"Error launching Chrome: {e}")
+        print("\nTroubleshooting steps:")
+        print("1. Make sure you have administrator privileges")
+        print("2. Close all Chrome windows")
+        print("3. Check Task Manager and end all Chrome processes")
+        print("4. Try running the script again")
         return False
 
 def has_exactly_three_distinct_digits(number):
@@ -81,9 +137,31 @@ def find_number_with_three_distinct_digits():
     with sync_playwright() as p:
         try:
             print("Connecting to Chrome...")
-            # Connect to the already running browser
-            browser = p.chromium.connect_over_cdp(f"http://localhost:{os.getenv('CHROME_DEBUG_PORT', 9222)}")
-            print("Connected to Chrome successfully!")
+            # Try to connect multiple times if needed
+            max_connect_attempts = 3
+            browser = None
+            
+            for attempt in range(max_connect_attempts):
+                try:
+                    browser = p.chromium.connect_over_cdp(f"http://localhost:{os.getenv('CHROME_DEBUG_PORT', 9222)}")
+                    print("Connected to Chrome successfully!")
+                    break
+                except Exception as e:
+                    if attempt < max_connect_attempts - 1:
+                        print(f"Connection attempt {attempt + 1} failed: {e}")
+                        print("Retrying in 2 seconds...")
+                        time.sleep(2)
+                    else:
+                        print("Failed to connect to Chrome after multiple attempts")
+                        print("\nTroubleshooting steps:")
+                        print("1. Make sure Chrome is running with remote debugging enabled")
+                        print("2. Check if the debugging port is correct")
+                        print("3. Try closing and reopening Chrome")
+                        print("4. Run the script again")
+                        return None
+            
+            if not browser:
+                return None
             
             # Get all pages and find the one with the Eight URL
             print("Looking for the Eight number selection page...")
@@ -108,9 +186,13 @@ def find_number_with_three_distinct_digits():
             page = found_page
             print(f"Found the correct page: {page.url}")
             
-            # Wait for page to be fully loaded
+            # Wait for page to be fully loaded with better error handling
             print("Waiting for page to be fully loaded...")
-            page.wait_for_load_state("networkidle", timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
+            try:
+                page.wait_for_load_state("networkidle", timeout=int(os.getenv('PAGE_TIMEOUT', 60000)))
+            except Exception as e:
+                print(f"Warning: Page load timeout: {e}")
+                print("Continuing anyway...")
             
             attempts = 0
             max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', 100))  # Prevent infinite loop

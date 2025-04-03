@@ -133,7 +133,7 @@ def has_exactly_three_distinct_digits(number):
     required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
     return unique_digits == required_digits
 
-def find_number_with_three_distinct_digits(browser=None, page=None):
+def find_number_with_three_distinct_digits(browser=None, page=None, max_attempts=None):
     """Find a number with exactly three distinct digits. If browser and page are provided, use them instead of creating new ones."""
     with sync_playwright() as p:
         try:
@@ -194,13 +194,14 @@ def find_number_with_three_distinct_digits(browser=None, page=None):
                     print("Continuing anyway...")
             
             attempts = 0
-            # Read MAX_SEARCH_ATTEMPTS from .env with proper error handling
-            try:
-                max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
-                print(f"Maximum search attempts set to: {max_attempts}")
-            except ValueError:
-                print("Warning: Invalid MAX_SEARCH_ATTEMPTS value in .env file. Using default value of 1.")
-                max_attempts = 1
+            # Use provided max_attempts or read from .env with proper error handling
+            if max_attempts is None:
+                try:
+                    max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
+                    print(f"Maximum search attempts set to: {max_attempts}")
+                except ValueError:
+                    print("Warning: Invalid MAX_SEARCH_ATTEMPTS value in .env file. Using default value of 1.")
+                    max_attempts = 1
             
             required_digits = int(os.getenv('REQUIRED_DISTINCT_DIGITS', 3))
             
@@ -286,22 +287,48 @@ if __name__ == "__main__":
         browser = None
         page = None
         found_numbers = []
+        current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
         
         while True:
-            result, (browser, page) = find_number_with_three_distinct_digits(browser, page)
+            # First search with current max_attempts
+            result, (browser, page) = find_number_with_three_distinct_digits(browser, page, current_max_attempts)
             if result:
                 found_numbers.append(result)
                 print(f"\nFound numbers so far: {found_numbers}")
-                print("\nDo you want to continue searching? (y/n)")
-                if input().lower() != 'y':
+            
+            # Ask if user wants to continue searching
+            print("\nDo you want to continue searching? (y/n)")
+            if input().lower() != 'y':
+                break
+                
+            # Ask how many more numbers to search for
+            print("\nHow many more numbers would you like to search for? (Enter a number or press Enter for default)")
+            try:
+                additional_searches = input().strip()
+                if additional_searches:
+                    current_max_attempts = int(additional_searches)
+                    print(f"Will search for {current_max_attempts} more numbers")
+                else:
+                    current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
+                    print(f"Using default of {current_max_attempts} more searches")
+            except ValueError:
+                print("Invalid input. Using default number of searches.")
+                current_max_attempts = int(os.getenv('MAX_SEARCH_ATTEMPTS', '1'))
+            
+            # Keep searching until we find the requested number of numbers or run out of attempts
+            remaining_searches = current_max_attempts
+            while remaining_searches > 0:
+                result, (browser, page) = find_number_with_three_distinct_digits(browser, page, remaining_searches)
+                if result:
+                    found_numbers.append(result)
+                    print(f"\nFound numbers so far: {found_numbers}")
+                    remaining_searches -= 1
+                else:
+                    print("\nNo more numbers found in this batch.")
                     break
-            else:
-                print("\nNo more numbers found. Do you want to try again? (y/n)")
-                if input().lower() != 'y':
-                    break
-                # Reset browser and page for new search
-                browser = None
-                page = None
+                    
+            print(f"\nCompleted searching for {current_max_attempts} more numbers.")
+            print(f"Total numbers found: {len(found_numbers)}")
         
         if found_numbers:
             print(f"\nAll found numbers: {found_numbers}")
